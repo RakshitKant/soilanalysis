@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SoilSense — Soil Fertility Prediction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Source+Serif+4:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#12100c; --panel:#1b1712; --fertility:#8bb35a; --moisture:#3aa5c9;
+    --alert:#d99a3f; --sand:#efe6d6; --sand-dim:#b8ad9a; --hair:rgba(239,230,214,.12);
+    --display:'Space Grotesk',sans-serif; --body:'Source Serif 4',serif; --mono:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--sand); font-family:var(--body); line-height:1.55;}
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px;}
+  header{padding:20px 0; border-bottom:1px solid var(--hair); position:sticky; top:0; background:rgba(18,16,12,.9); backdrop-filter:blur(8px); z-index:10;}
+  .brand{display:flex; align-items:center; gap:9px; font-family:var(--display); font-weight:700; font-size:18px;}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--fertility);}
+  #apiStatus{font-family:var(--mono); font-size:11px; color:var(--sand-dim);}
+  h1{font-family:var(--display); font-size:clamp(28px,4vw,42px); margin:36px 0 8px;}
+  .sub{color:var(--sand-dim); max-width:60ch; margin:0 0 32px;}
+  section{padding:32px 0; border-top:1px solid var(--hair);}
+  h2{font-family:var(--display); font-size:20px; margin:0 0 18px;}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:14px;}
+  label{display:flex; flex-direction:column; gap:6px; font-family:var(--mono); font-size:11px; text-transform:uppercase; color:var(--sand-dim); letter-spacing:.05em;}
+  input{background:var(--panel); border:1px solid var(--hair); border-radius:5px; padding:10px 12px; color:var(--sand); font-family:var(--body); font-size:14px;}
+  input:focus{outline:2px solid var(--moisture); border-color:transparent;}
+  .btn{margin-top:20px; font-family:var(--display); font-weight:600; font-size:14px; padding:12px 26px; border-radius:4px; border:none; background:var(--fertility); color:#14210a; cursor:pointer;}
+  .btn:hover{background:#9bc46c;}
+  .btn:disabled{opacity:.5; cursor:default;}
+  #result{margin-top:24px; display:none; background:var(--panel); border:1px solid var(--hair); border-radius:8px; padding:22px;}
+  #result.show{display:block;}
+  .fert{font-family:var(--display); font-weight:700; font-size:26px;}
+  .fert.Low{color:var(--alert);} .fert.Medium{color:var(--moisture);} .fert.High{color:var(--fertility);}
+  .conf{font-family:var(--mono); font-size:12px; color:var(--sand-dim); margin-top:4px;}
+  .rec{margin-top:12px; color:var(--sand-dim);}
+  .err{color:var(--alert); margin-top:14px; font-family:var(--mono); font-size:13px;}
+  .stat-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:14px;}
+  .stat{background:var(--panel); border:1px solid var(--hair); border-radius:6px; padding:16px 18px;}
+  .stat-num{font-family:var(--display); font-weight:700; font-size:24px;}
+  .stat-label{font-family:var(--mono); font-size:10.5px; color:var(--sand-dim); text-transform:uppercase; margin-top:4px;}
+  table{width:100%; border-collapse:collapse; margin-top:10px;}
+  th,td{text-align:left; padding:9px 10px; border-top:1px solid var(--hair); font-size:13px;}
+  th{font-family:var(--mono); font-size:10.5px; color:var(--sand-dim); text-transform:uppercase; border-top:none;}
+  .row-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;}
+  .link-btn{background:none; border:1px solid var(--hair); color:var(--sand-dim); font-family:var(--mono); font-size:11px; padding:6px 12px; border-radius:4px; cursor:pointer;}
+  .link-btn:hover{color:var(--sand); border-color:var(--sand-dim);}
+  footer{text-align:center; padding:32px 0; color:var(--sand-dim); font-family:var(--mono); font-size:11px;}
+</style>
+</head>
+<body>
+
+<header><div class="wrap" style="display:flex; justify-content:space-between; align-items:center;">
+  <div class="brand"><span class="dot"></span>SoilSense</div>
+  <span id="apiStatus">checking API…</span>
+</div></header>
+
+<div class="wrap">
+  <h1>Soil Fertility Prediction</h1>
+  <p class="sub">Enter a soil sample's nutrient readings to get an instant fertility classification and recommendation from the SoilSense ML model.</p>
+
+  <section id="analyze">
+    <h2>Analyze a sample</h2>
+    <form id="form" class="grid"></form>
+    <button class="btn" id="submitBtn" form="form" type="submit">Predict fertility</button>
+    <div id="result"></div>
+    <div id="formErr" class="err"></div>
+  </section>
+
+  <section id="dashboard">
+    <div class="row-head"><h2>Dashboard</h2><button class="link-btn" id="refreshDash">Refresh</button></div>
+    <div class="stat-grid" id="statGrid"><div class="stat"><div class="stat-num">—</div><div class="stat-label">Loading</div></div></div>
+  </section>
+
+  <section id="history">
+    <div class="row-head"><h2>Recent predictions</h2><button class="link-btn" id="clearHistory">Clear history</button></div>
+    <table>
+      <thead><tr><th>ID</th><th>Fertility</th><th>Confidence</th><th>Timestamp</th></tr></thead>
+      <tbody id="historyBody"><tr><td colspan="4">Loading…</td></tr></tbody>
+    </table>
+  </section>
+</div>
+
+<footer>SoilSense API · <span id="modelInfo">—</span></footer>
+
+<script>
+const API = "http://localhost:8000"; // change to your deployed backend URL
+
+const FIELDS = [
+  ["N","Nitrogen"],["P","Phosphorus"],["K","Potassium"],["pH","pH"],
+  ["EC","EC"],["OC","Organic Carbon"],["S","Sulfur"],["Zn","Zinc"],
+  ["Fe","Iron"],["Cu","Copper"],["Mn","Manganese"],["B","Boron"]
+];
+
+const form = document.getElementById('form');
+FIELDS.forEach(([key,label])=>{
+  const l = document.createElement('label');
+  l.innerHTML = `${label} (${key})<input name="${key}" type="number" step="any" required>`;
+  form.appendChild(l);
+});
+
+async function apiFetch(path, opts){
+  const res = await fetch(API+path, opts);
+  if(!res.ok){
+    let msg = res.statusText;
+    try{ msg = (await res.json()).detail || msg; }catch(e){}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+async function checkHealth(){
+  const el = document.getElementById('apiStatus');
+  try{
+    const h = await apiFetch('/health');
+    el.textContent = h.status === 'healthy' ? '● API connected' : '● API issue';
+    el.style.color = h.status === 'healthy' ? 'var(--fertility)' : 'var(--alert)';
+  }catch(e){
+    el.textContent = '● API offline';
+    el.style.color = 'var(--alert)';
+  }
+}
+
+form.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  const errEl = document.getElementById('formErr');
+  const resultEl = document.getElementById('result');
+  errEl.textContent = ''; resultEl.classList.remove('show');
+  const data = {};
+  new FormData(form).forEach((v,k)=> data[k] = parseFloat(v));
+  btn.disabled = true; btn.textContent = 'Predicting…';
+  try{
+    const res = await apiFetch('/api/analyze', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+    const f = res.prediction.fertility;
+    resultEl.innerHTML = `
+      <div class="fert ${f}">${f} fertility</div>
+      <div class="conf">${res.prediction.confidence != null ? res.prediction.confidence + '% confidence' : 'confidence unavailable'} · model: ${res.model}</div>
+      <p class="rec">${res.recommendation}</p>`;
+    resultEl.classList.add('show');
+    loadDashboard(); loadHistory();
+  }catch(err){
+    errEl.textContent = 'Error: ' + err.message;
+  }finally{
+    btn.disabled = false; btn.textContent = 'Predict fertility';
+  }
+});
+
+async function loadDashboard(){
+  const grid = document.getElementById('statGrid');
+  try{
+    const [dash, stats] = await Promise.all([apiFetch('/api/dashboard'), apiFetch('/api/stats')]);
+    document.getElementById('modelInfo').textContent = `${dash.model} · ${dash.accuracy} accuracy`;
+    grid.innerHTML = `
+      <div class="stat"><div class="stat-num">${stats.total_predictions}</div><div class="stat-label">Total predictions</div></div>
+      <div class="stat"><div class="stat-num">${stats.low}</div><div class="stat-label">Low</div></div>
+      <div class="stat"><div class="stat-num">${stats.medium}</div><div class="stat-label">Medium</div></div>
+      <div class="stat"><div class="stat-num">${stats.high}</div><div class="stat-label">High</div></div>
+      <div class="stat"><div class="stat-num">${stats.average_confidence}%</div><div class="stat-label">Avg confidence</div></div>`;
+  }catch(e){
+    grid.innerHTML = `<div class="stat"><div class="stat-num">—</div><div class="stat-label">API unavailable</div></div>`;
+  }
+}
+
+async function loadHistory(){
+  const body = document.getElementById('historyBody');
+  try{
+    const rows = await apiFetch('/api/history?limit=20');
+    body.innerHTML = rows.length ? rows.map(r=>`
+      <tr><td>${r.id}</td><td>${r.fertility}</td><td>${r.confidence ?? '—'}</td><td>${new Date(r.timestamp).toLocaleString()}</td></tr>
+    `).join('') : '<tr><td colspan="4">No predictions yet</td></tr>';
+  }catch(e){
+    body.innerHTML = '<tr><td colspan="4">Could not load history</td></tr>';
+  }
+}
+
+document.getElementById('refreshDash').addEventListener('click', loadDashboard);
+document.getElementById('clearHistory').addEventListener('click', async ()=>{
+  if(!confirm('Delete all prediction history?')) return;
+  await apiFetch('/api/history', {method:'DELETE'});
+  loadDashboard(); loadHistory();
+});
+
+checkHealth(); loadDashboard(); loadHistory();
+</script>
+</body>
+</html>
